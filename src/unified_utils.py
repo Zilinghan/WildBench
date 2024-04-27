@@ -250,6 +250,23 @@ def retry_handler(retry_limit=10):
         return wrapper
     return decorate
 
+def local_api_request(
+    model: str=None,
+    base_url: str=None,
+    prompt: str=None,
+    **kwargs,
+) -> List[str]:
+    client = openai.OpenAI(base_url=base_url)
+    response = client.completions.create(
+        model=model,
+        prompt=prompt,
+        **kwargs,
+    )
+    contents = []
+    for choice in response['choices']:
+        contents.append(choice['text'])
+    return contents
+
 def openai_chat_request(
     model: str=None,
     engine: str=None,

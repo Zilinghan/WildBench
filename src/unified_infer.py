@@ -7,7 +7,7 @@ from tqdm import tqdm
 import json
 import os  
 from unified_utils import load_eval_data, save_outputs
-from unified_utils import openai_chat_request, retry_handler, google_chat_request, cohere_chat_request, mistral_chat_request, anthropic_chat_request
+from unified_utils import openai_chat_request, retry_handler, google_chat_request, cohere_chat_request, mistral_chat_request, anthropic_chat_request, local_api_request
 from hf_models import DecoderOnlyModelManager
 from transformers import AutoTokenizer
 from infer_constants import IM_END_MODELS
@@ -38,6 +38,7 @@ def parse_args():
     parser.add_argument('--no_repeat_ngram_size', default=0, type=int)
     parser.add_argument('--hf_bf16', action='store_true')
     parser.add_argument('--hf_gptq', action='store_true')
+    parser.add_argument('--api_base_url', default="http://localhost:8000/v1", type=str)
 
     # only for MT-bench 
     parser.add_argument('--mt_turn', default=-1, type=int)
@@ -158,7 +159,30 @@ if __name__ == "__main__":
             outputs.extend(batch_outputs) # TODO: enbale multiple generation 
             save_outputs(args, id_strs, outputs, chat_history, metadata, model_inputs, filepath)
         save_outputs(args, id_strs, outputs, chat_history, metadata, model_inputs, filepath)
-        
+
+    elif args.engine == "local_api":
+        @retry_handler(retry_limit=10)
+        def api(**kwargs):
+            result = local_api_request(**kwargs) 
+            return result
+        for cur_id in tqdm(range(0, len(todo_inputs)), desc=f"Generating {args.model_name} from {args.start_index} to {args.end_index}"):
+            input_text = todo_inputs[cur_id] 
+            local_api_args = {
+                "model": args.model_name,
+                "prompt": input_text,
+                "top_p": args.top_p,
+                "temperature": args.temperature,
+                "repetition_penalty": args.repetition_penalty,
+                "max_tokens": args.max_tokens,
+                "stop": stop_words,
+                "stop_token_ids": stop_token_ids,
+                "include_stop_str_in_output": include_stop_str_in_output,
+                "n": args.num_outputs,
+            }
+            result = local_api_request(**local_api_args)
+            outputs.append(result) 
+            save_outputs(args, id_strs, outputs, chat_history, metadata, model_inputs, filepath) 
+     
     elif args.engine == "openai":        
         todo_chats = chat_history[num_skipped:]
         @retry_handler(retry_limit=10)
